@@ -9,10 +9,9 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
   const locale = new Intl.NumberFormat("zh-CN");
   const firstQuestion = (scene) => (scene.part - 1) * 10 + 1;
   const sceneById = new Map(bank.map((scene) => [scene.id, scene]));
-  const counts = [1, 2, 3, 4].map((p) => bank.filter((scene) => scene.part === p).length);
-  const answerCount = bank.reduce((sum, scene) => sum + scene.answers.filter(Boolean).length, 0);
-  const audioCount = bank.filter((scene) => scene.audio).length;
+  const novemberBank = bank.filter((scene) => scene.source.some((source) => source.includes("11月初 听力 抱佛脚 小范围")));
   const ui = { part: 0, search: "", page: 0, expanded: "", audioOnly: false };
+  let activeCatalog = bank;
   let session = null;
   let attempts = {};
 
@@ -30,24 +29,33 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     else location.hash = view;
   }
 
-  function banner(isPractice) {
+  function catalogFor(route) {
+    return route === "november" ? novemberBank : bank;
+  }
+
+  function banner(isPractice, catalog) {
+    const isNovember = catalog === novemberBank;
+    const answerCount = catalog.reduce((sum, scene) => sum + scene.answers.filter(Boolean).length, 0);
+    const audioCount = catalog.filter((scene) => scene.audio).length;
     const wave = [12,17,25,32,18,39,57,35,46,67,81,47,30,51,64,28,35,46,79,91,56,39,57,80,49,71,88,64,32,49,56,41,26,37,62,47,30,22,32,27,20,13];
     return `<section class="hero">
       <div class="hero-copy">
         <div class="eyebrow">11 月听力题库</div>
-        <h1>${isPractice ? "雅思听力机考练习" : "雅思听力场景答案"}</h1>
-        <p>${isPractice ? "按 Part 单篇练习，也可组合四个 Part 限时作答。" : "按场景查答案，按题号核对填空词和选项。"} </p>
-        <div class="hero-actions">${isPractice
-          ? '<button class="button primary" data-action="mock">开始 40 题组合练习 <span aria-hidden="true">→</span></button>'
-          : '<a class="button primary" href="#practice">进入机考练习 <span aria-hidden="true">→</span></a>'}
+        <h1>${isNovember ? "11月听力小范围" : isPractice ? "雅思听力机考练习" : "雅思听力场景答案"}</h1>
+        <p>${isNovember ? "来自《11月初 听力 抱佛脚 小范围》，收录 Part 1 预测和 Part 4 重点场景。" : isPractice ? "按 Part 单篇练习，也可组合四个 Part 限时作答。" : "按场景查答案，按题号核对填空词和选项。"}</p>
+        <div class="hero-actions">
+          ${isNovember ? '<a class="button primary" href="#practice">返回全部练习</a>' : isPractice
+            ? '<button class="button primary" data-action="mock">开始 40 题组合练习 <span aria-hidden="true">→</span></button>'
+            : '<a class="button primary" href="#practice">进入机考练习 <span aria-hidden="true">→</span></a>'}
+          ${isNovember || !novemberBank.length ? "" : '<a class="button secondary" href="#november">11月听力小范围</a>'}
           ${isPractice ? '<button class="button secondary" data-action="audio-only" aria-pressed="' + ui.audioOnly + '">只看有音频</button>' : ""}
         </div>
-        ${isPractice ? '<p class="hint">组合练习的 Part 1 为关键词填空，Part 2–4 使用原题和音频。</p>' : ""}
+        ${isPractice && !isNovember ? '<p class="hint">组合练习的 Part 1 为关键词填空，Part 2–4 使用原题和音频。</p>' : ""}
       </div>
       <div class="hero-board">
-        <div class="board-top"><span>IELTS LISTENING</span><strong>Part 1–4</strong></div>
+        <div class="board-top"><span>IELTS LISTENING</span><strong>${isNovember ? "Part 1 / Part 4" : "Part 1–4"}</strong></div>
         <div class="wave" aria-hidden="true">${wave.map((n) => '<span style="height:'+n+'%"></span>').join("")}</div>
-        <div class="stats"><div><strong>${bank.length}</strong><span>听力场景</span></div><div><strong>${locale.format(answerCount)}</strong><span>小题答案</span></div><div><strong>${audioCount}</strong><span>原录音</span></div></div>
+        <div class="stats"><div><strong>${catalog.length}</strong><span>听力场景</span></div><div><strong>${locale.format(answerCount)}</strong><span>小题答案</span></div><div><strong>${audioCount}</strong><span>原录音</span></div></div>
       </div>
     </section>`;
   }
@@ -70,7 +78,7 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
 
   function sceneList(isPractice) {
     const search = ui.search.trim().toLowerCase();
-    const filtered = bank.filter((scene) => (!ui.part || scene.part === ui.part)
+    const filtered = activeCatalog.filter((scene) => (!ui.part || scene.part === ui.part)
       && (!isPractice || !ui.audioOnly || scene.audio)
       && (!search || [scene.zh, scene.en, scene.id, descriptions[scene.id], ...scene.aliases, ...(!isPractice ? scene.answers : [])]
         .some((s) => s?.toLowerCase().includes(search))));
@@ -87,7 +95,7 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
         <div class="scene-title"><strong>${escapeHtml(s.zh)}</strong><small lang="en">${escapeHtml(s.en)}</small><p class="description">${escapeHtml(descriptions[s.id] ?? "")}</p></div>
         <span class="scene-type">${info}</span>${action}</div>${expanded ? answerCard(s) : ""}`;
     }).join("");
-    const supplement = (!isPractice || !ui.audioOnly) && (!ui.part || ui.part === 1)
+    const supplement = activeCatalog === bank && (!isPractice || !ui.audioOnly) && (!ui.part || ui.part === 1)
       && (!search || "bay view holiday village 海湾景观度假村".includes(search))
       ? '<div class="exam-nav"><div><strong>Part 1 补充原题 · Bay View Holiday Village</strong><p class="hint">游客了解度假村的小木屋、短住优惠和家庭活动。原资料缺少音频和答案。</p></div><a class="button secondary small" href="' + escapeHtml(mediaUrl("questions/extra-bay-view.webp")) + '" target="_blank" rel="noopener">查看原题</a></div>' : '';
     document.querySelector("#matches").textContent = `${filtered.length} 个场景`;
@@ -99,10 +107,18 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
   }
 
   function library(isPractice) {
-    main.innerHTML = banner(isPractice) + `<section class="library" id="library" aria-labelledby="library-title">
+    const catalog = catalogFor(view());
+    if (activeCatalog !== catalog) {
+      activeCatalog = catalog;
+      ui.part = 0;
+      ui.audioOnly = false;
+    }
+    const counts = [1, 2, 3, 4].map((p) => catalog.filter((scene) => scene.part === p).length);
+    const parts = [0, 1, 2, 3, 4].filter((p) => p === 0 || catalog === bank || counts[p-1]);
+    main.innerHTML = banner(isPractice, catalog) + `<section class="library" id="library" aria-labelledby="library-title">
       <div class="library-head"><h2 id="library-title">${isPractice ? "选择练习场景" : "场景与答案"}</h2><span id="matches" aria-live="polite"></span></div>
       <div class="controls"><div class="filters" aria-label="按 Part 筛选">
-        ${[0,1,2,3,4].map((p) => `<button class="filter" data-action="filter" data-part="${p}" aria-pressed="${ui.part===p}">${p === 0 ? "全部" : `Part ${p} · ${counts[p-1]}`}</button>`).join("")}</div>
+        ${parts.map((p) => `<button class="filter" data-action="filter" data-part="${p}" aria-pressed="${ui.part===p}">${p === 0 ? "全部" : `Part ${p} · ${counts[p-1]}`}</button>`).join("")}</div>
         <input class="search" type="search" id="search" aria-label="搜索场景" placeholder="${isPractice ? "搜索场景或编号" : "搜索场景、编号或答案"}" value="${escapeHtml(ui.search)}">
       </div>
       <div id="scene-list"></div>
@@ -115,9 +131,9 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     sceneList(isPractice);
   }
 
-  function newSession(scenes, timed) {
+  function newSession(scenes, timed, libraryRoute = "practice") {
     session = {
-      scenes, timed, index: 0, deadline: timed ? Date.now() + 30 * 60_000 : 0,
+      scenes, timed, libraryRoute, index: 0, deadline: timed ? Date.now() + 30 * 60_000 : 0,
       answers: scenes.map(() => Array(10).fill("")),
       flags: scenes.map(() => Array(10).fill(false)),
       activeQuestions: scenes.map((scene) => scene.answers.findIndex((answer) => answer !== null)),
@@ -207,7 +223,7 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
         ${session.timed ? "" : `<span class="inline-key" hidden>参考答案　${escapeHtml(a ?? "原资料未列")}</span>`}</div>`;
     }).join("");
     main.innerHTML = `<section>
-      <div class="exam-top"><div><a class="back" href="#practice">← 练习题库</a><h1>${escapeHtml(scene.zh)}</h1><p lang="en">${escapeHtml(scene.en)}</p><p class="description">${escapeHtml(descriptions[scene.id] ?? "")}</p></div>${session.timed ? '<output class="clock" id="timer" aria-label="剩余时间"></output>' : ""}</div>
+      <div class="exam-top"><div>${libraryBackLink()}<h1>${escapeHtml(scene.zh)}</h1><p lang="en">${escapeHtml(scene.en)}</p><p class="description">${escapeHtml(descriptions[scene.id] ?? "")}</p></div>${session.timed ? '<output class="clock" id="timer" aria-label="剩余时间"></output>' : ""}</div>
       <div class="part-switch" aria-label="切换 Part">
         ${session.scenes.map((s, i) => `<button class="filter" data-action="part" data-item="${i}" aria-pressed="${i===index}">Part ${s.part} · Q${firstQuestion(s)}–${firstQuestion(s)+9}</button>`).join("")}
       </div>
@@ -362,6 +378,12 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     go("results");
   }
 
+  function libraryBackLink() {
+    return session.libraryRoute === "november"
+      ? '<a class="back" href="#november">← 11月听力小范围</a>'
+      : '<a class="back" href="#practice">← 练习题库</a>';
+  }
+
   function results() {
     if (!session?.submitted) return library(true);
     let right = 0;
@@ -378,8 +400,9 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       <td>${escapeHtml(row.answer ?? "原资料未列")}</td><td class="${row.correct === null ? "" : row.correct ? "ok" : "bad"}">${row.correct === null ? "不计分" : row.correct ? "正确" : row.value.trim() ? "答错" : "未答"}</td></tr>`).join("")}
       </tbody></table></details>`;
     });
-    const nextScene = session.timed ? null : bank[bank.indexOf(session.scenes[0]) + 1];
-    main.innerHTML = `<div class="exam-top"><div><a class="back" href="#practice">← 练习题库</a><h1>练习结果</h1></div>
+    const catalog = catalogFor(session.libraryRoute);
+    const nextScene = session.timed ? null : catalog[catalog.indexOf(session.scenes[0]) + 1];
+    main.innerHTML = `<div class="exam-top"><div>${libraryBackLink()}<h1>练习结果</h1></div>
       <div class="dialog-actions"><button class="button secondary" data-action="retry">重做本组</button>
         ${nextScene ? `<button class="button primary" data-action="start" data-id="${nextScene.id}">下一场景</button>` : ""}</div></div>
       <div class="result-summary"><p>答对题数</p><h2>${right} / ${total}</h2><p>正确率 ${total ? Math.round(right / total * 100) : 0}%</p></div>${sections.join("")}`;
@@ -391,7 +414,7 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
 
   function render() {
     const route = view();
-    const onAnswers = !["practice", "session", "results"].includes(route);
+    const onAnswers = !["practice", "november", "session", "results"].includes(route);
     document.querySelectorAll("[data-nav]").forEach((el) => {
       if (el.dataset.nav === (onAnswers ? "answers" : "practice")) el.setAttribute("aria-current", "page");
       else el.removeAttribute("aria-current");
@@ -406,7 +429,8 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     if (!el) return;
     const action = el.dataset.action;
     const item = Number(el.dataset.item);
-    const isPractice = view() === "practice";
+    const route = view();
+    const isPractice = route === "practice" || route === "november";
 
     if (action === "filter") {
       ui.part = Number(el.dataset.part);
@@ -427,7 +451,8 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       sceneList(false);
       main.querySelector(`button[data-id="${el.dataset.id}"]`).focus({preventScroll:true});
     } else if (action === "start") {
-      newSession([sceneById.get(el.dataset.id)], false);
+      const libraryRoute = route === "results" ? session.libraryRoute : route;
+      newSession([sceneById.get(el.dataset.id)], false, libraryRoute);
     } else if (action === "mock") {
       newSession([1,2,3,4].map(randomScene), true);
     } else if (action === "part" || action === "next-part") {
@@ -471,7 +496,7 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       dialog.returnValue = "";
       dialog.showModal();
     } else if (action === "retry") {
-      newSession(session.scenes, session.timed);
+      newSession(session.scenes, session.timed, session.libraryRoute);
     }
   });
 
