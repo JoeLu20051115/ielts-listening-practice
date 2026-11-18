@@ -2,6 +2,7 @@
 
 function startListening(bank, descriptions = {}, mediaUrl = (relative) => relative) {
   const questionTexts = window.LISTENING_QUESTION_TEXTS ?? {};
+  const translations = window.LISTENING_BILINGUAL ?? { docs: {}, cues: {} };
   const main = document.querySelector("#main");
   const dialog = document.querySelector("#confirm");
   const pageSize = 10;
@@ -146,25 +147,49 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     </div>`;
   }
 
-  function questionText(scene) {
+  function bilingualRows(scene) {
+    if (scene.pages) return translations.docs[scene.id] ?? (questionTexts[scene.id] ?? "").split("\n").map((line) => [line, ""]);
+    const chinese = translations.cues[scene.id] ?? [];
+    return scene.clues.map((clue, i) => [`${firstQuestion(scene) + i}  ${clue || "原资料未列"}`, chinese[i] || ""]);
+  }
+
+  function questionText(scene, bothLanguages = false) {
+    if (bothLanguages) return bilingualRows(scene).map(([english, chinese]) =>
+      chinese ? `${english.trim()}\n${chinese}\n` : english.trim()).join("\n");
     if (scene.pages) return questionTexts[scene.id] ?? "";
-    return scene.clues.map((clue, i) => `${firstQuestion(scene) + i}  ${clue || "原资料未列"}`).join("\n");
+    return bilingualRows(scene).map(([english]) => english).join("\n");
+  }
+
+  function rowQuestions(line, scene) {
+    const prefix = line.match(/^\s*(\d{1,2})(?=[ .、)])/);
+    const numbers = [...line.matchAll(/\b(\d{1,2})(?=\s*[._…·．]{3,})/g)].map((part) => Number(part[1]));
+    if (prefix) numbers.push(Number(prefix[1]));
+    const start = firstQuestion(scene);
+    return [...new Set(numbers.filter((n) => n >= start && n < start + 10))].join(" ");
+  }
+
+  function bilingualPanel(scene) {
+    const lines = bilingualRows(scene).map(([english, chinese]) => {
+      if (!english.trim()) return '<div class="bilingual-break" aria-hidden="true"></div>';
+      return `<div class="bilingual-row" data-questions="${rowQuestions(english, scene)}"><span lang="en">${escapeHtml(english.trim())}</span>
+        <span class="bilingual-zh" lang="zh-CN">${escapeHtml(chinese)}</span></div>`;
+    }).join("");
+    return `<div class="bilingual-text" id="question-text" tabindex="0"><div class="bilingual-head" aria-hidden="true"><span>英文题目</span><span>中文译文</span></div>${lines}</div>`;
   }
 
   function promptPanel(scene) {
     const words = questionText(scene);
     const title = scene.pages ? "听力原题" : "场景填空";
     const textButton = scene.pages && words
-      ? '<button class="button secondary small" data-action="question-text" aria-expanded="false" aria-controls="question-text">文字版</button>' : "";
-    const copyButton = words ? '<button class="button secondary small" data-action="copy-question">复制题目</button>' : "";
-    const content = scene.pages
-      ? `<div id="question-images" class="question-images">${Array.from({length:scene.pages}, (_, i) => {
+      ? '<button class="button secondary small" data-action="question-text" aria-expanded="false" aria-controls="question-images">原题图片</button>' : "";
+    const copyButtons = words ? '<button class="button secondary small" data-action="copy-question">复制英文</button><button class="button secondary small" data-action="copy-bilingual">复制中英</button>' : "";
+    const images = scene.pages
+      ? `<div id="question-images" class="question-images" ${words ? "hidden" : ""}>${Array.from({length:scene.pages}, (_, i) => {
           const src = escapeHtml(mediaUrl(`questions/${scene.id}-${i+1}.webp`));
           return `<a href="${src}" target="_blank" rel="noopener" aria-label="放大原题第 ${i+1} 页"><img class="question-image" src="${src}" alt="原题第 ${i+1} 页，共 ${scene.pages} 页" ${i ? 'loading="lazy"' : ""}></a>`;
-        }).join("")}</div><pre id="question-text" class="question-text" lang="en" tabindex="0" hidden>${escapeHtml(words)}</pre>`
-      : `<div class="cues" id="question-text">${scene.clues.map((clue, i) => `<div class="cue" lang="${clue ? "en" : "zh-CN"}"><b>${firstQuestion(scene)+i}</b> ${escapeHtml(clue || "原资料未列")}</div>`).join("")}</div>`;
-    return `<section class="panel"><div class="panel-head"><h2>${title}</h2><div class="answer-tools">${textButton}${copyButton}</div>
-      <span role="status" id="copy-feedback"></span></div>${content}</section>`;
+        }).join("")}</div>` : "";
+    return `<section class="panel"><div class="panel-head"><h2>${title}</h2><div class="answer-tools">${textButton}${copyButtons}</div>
+      <span role="status" id="copy-feedback"></span></div>${words ? bilingualPanel(scene) : ""}${images}</section>`;
   }
 
   function exam() {
@@ -205,6 +230,13 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       el.addEventListener("focus", () => {
         session.activeQuestions[index] = item;
         showProgress();
+        const text = main.querySelector("#question-text");
+        const prompt = text?.querySelector(".bilingual-current");
+        if (prompt && !text.hidden) {
+          const row = prompt.getBoundingClientRect();
+          const panel = text.getBoundingClientRect();
+          if (row.top < panel.top || row.bottom > panel.bottom) text.scrollTop += row.top - panel.top - 8;
+        }
       });
       el.addEventListener("input", () => {
         session.answers[index][item] = el.value;
@@ -252,6 +284,9 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       if (i === session.activeQuestions[index]) el.setAttribute("aria-current", "step");
       else el.removeAttribute("aria-current");
     });
+    const number = firstQuestion(session.scenes[index]) + session.activeQuestions[index];
+    main.querySelector(".bilingual-current")?.classList.remove("bilingual-current");
+    main.querySelector(`.bilingual-row[data-questions~="${number}"]`)?.classList.add("bilingual-current");
     main.querySelector('[data-action="next-answer"]').disabled = nextAnswerIndex() === -1 && index === session.scenes.length - 1;
   }
 
@@ -289,25 +324,21 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     main.querySelector("#question-images").hidden = show;
     main.querySelector("#question-text").hidden = !show;
     const toggle = main.querySelector('[data-action="question-text"]');
-    toggle.setAttribute("aria-expanded", String(show));
-    toggle.textContent = show ? "原题图片" : "文字版";
+    toggle.setAttribute("aria-expanded", String(!show));
+    toggle.textContent = show ? "原题图片" : "中英对照";
   }
 
-  async function copyQuestion() {
+  async function copyQuestion(bothLanguages) {
     const scene = session.scenes[session.index];
     const feedback = main.querySelector("#copy-feedback");
     try {
-      await navigator.clipboard.writeText(questionText(scene));
-      feedback.textContent = "题目已复制";
+      await navigator.clipboard.writeText(questionText(scene, bothLanguages));
+      feedback.textContent = bothLanguages ? "中英题目已复制" : "英文题目已复制";
     } catch {
       if (!feedback.isConnected) return;
       if (scene.pages) showQuestionText(true);
-      const range = document.createRange();
-      range.selectNodeContents(main.querySelector("#question-text"));
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      feedback.textContent = "文字已选中，可用复制快捷键。";
+      main.querySelector("#question-text")?.focus();
+      feedback.textContent = "可在对照区选中文字，再用复制快捷键。";
     }
   }
 
@@ -404,9 +435,9 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     } else if (action === "next-answer") {
       nextQuestion();
     } else if (action === "question-text") {
-      showQuestionText(el.getAttribute("aria-expanded") !== "true");
-    } else if (action === "copy-question") {
-      await copyQuestion();
+      showQuestionText(el.getAttribute("aria-expanded") === "true");
+    } else if (action === "copy-question" || action === "copy-bilingual") {
+      await copyQuestion(action === "copy-bilingual");
     } else if (action === "play") {
       const index = session.index;
       const audio = document.querySelector("#audio");

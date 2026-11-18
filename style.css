@@ -182,7 +182,19 @@ dialog p { margin: 12px 0 17px; color: var(--muted); line-height: 1.55; }
 .answer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .inline-key { grid-column: 2 / -1; color: var(--deep); background: var(--soft); padding: 7px 9px; border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
 .inline-key[hidden] { display: none; }
-.question-text { margin: 0; padding: 16px 18px; max-height: 66vh; overflow: auto; color: var(--ink); background: var(--white); white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.65 "Cascadia Mono", Consolas, monospace; user-select: text; }
+.bilingual-text { max-height: 66vh; overflow: auto; background: var(--white); user-select: text; }
+.bilingual-head, .bilingual-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 17px; padding: 7px 14px; }
+.bilingual-head { position: sticky; top: 0; z-index: 1; background: var(--soft); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 740; color: var(--green); }
+.bilingual-row { font-size: 14px; line-height: 1.55; }
+.bilingual-row span { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bilingual-zh { padding-left: 11px; border-left: 1px solid var(--line); color: var(--muted); }
+.bilingual-current { background: var(--soft); box-shadow: inset 3px 0 var(--green); }
+.bilingual-break { height: 7px; }
+@media (max-width: 640px) {
+  .bilingual-head { display: none; }
+  .bilingual-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .bilingual-text { max-height: 60vh; }
+}
 #copy-feedback { color: var(--green); font-size: 12px; }
 #copy-feedback:not(:empty) { flex-basis: 100%; }
 .number[aria-current="step"] { outline: 2px solid var(--green); outline-offset: 1px; }
