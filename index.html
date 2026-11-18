@@ -6,12 +6,13 @@
   <meta name="theme-color" content="#142f2b">
   <meta name="description" content="11月雅思听力场景答案、原题和音频练习。">
   <title>听力练习室 · 雅思听力</title>
-  <link rel="stylesheet" href="style.css">
-  <script defer src="grading.js"></script>
-  <script defer src="app.js"></script>
-  <script defer src="import.js"></script>
+  <link rel="stylesheet" href="style.css?v=online-bank">
+  <script defer src="bank.js?v=online-bank"></script>
+  <script defer src="grading.js?v=online-bank"></script>
+  <script defer src="scene-descriptions.js?v=online-bank"></script>
+  <script defer src="app.js?v=online-bank"></script>
 </head>
-<body class="import-mode">
+<body>
   <header class="topbar">
     <div class="top-inner">
       <a class="brand" href="#answers" aria-label="听力练习室首页"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>听力练习室</span></a>
@@ -22,19 +23,8 @@
       <a class="official" href="https://ielts.org/take-a-test/preparation-resources/sample-test-questions/academic-test" target="_blank" rel="noopener">IELTS 官方样题 <span aria-hidden="true">↗</span></a>
     </div>
   </header>
-  <main id="main" tabindex="-1">
-    <section class="import-panel" aria-labelledby="import-title">
-      <p class="import-kicker">IELTS LISTENING</p>
-      <h1 id="import-title">雅思听力练习室</h1>
-      <p>解压题库包，然后选择 <strong>IELTS-Listening-Bank</strong> 文件夹。题目、参考答案和录音由浏览器从本机读取。</p>
-      <label class="import-picker">
-        选择题库文件夹
-        <input type="file" id="bank-directory" webkitdirectory multiple aria-describedby="import-feedback">
-      </label>
-      <p id="import-feedback" role="status"></p>
-    </section>
-  </main>
-  <footer><span>听力练习室 · 个人备考</span><span>本地题库导入</span></footer>
+  <main id="main" tabindex="-1"></main>
+  <footer><span>听力练习室 · 个人备考</span><span>个人备考练习 · 11 月听力题库</span></footer>
   <dialog id="confirm">
     <form method="dialog">
       <h2 id="confirm-heading">提交答案</h2>
