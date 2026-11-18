@@ -1,6 +1,7 @@
 "use strict";
 
 function startListening(bank, descriptions = {}, mediaUrl = (relative) => relative) {
+  const questionTexts = window.LISTENING_QUESTION_TEXTS ?? {};
   const main = document.querySelector("#main");
   const dialog = document.querySelector("#confirm");
   const pageSize = 10;
@@ -118,6 +119,7 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       scenes, timed, index: 0, deadline: timed ? Date.now() + 30 * 60_000 : 0,
       answers: scenes.map(() => Array(10).fill("")),
       flags: scenes.map(() => Array(10).fill(false)),
+      activeQuestions: scenes.map((scene) => scene.answers.findIndex((answer) => answer !== null)),
       audio: scenes.map(() => ({ played: false, done: false })),
       submitted: false,
     };
@@ -144,12 +146,25 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     </div>`;
   }
 
+  function questionText(scene) {
+    if (scene.pages) return questionTexts[scene.id] ?? "";
+    return scene.clues.map((clue, i) => `${firstQuestion(scene) + i}  ${clue || "原资料未列"}`).join("\n");
+  }
+
   function promptPanel(scene) {
-    if (scene.pages > 0) return `<div class="question-images">${Array.from({length:scene.pages}, (_, i) => {
-      const src = escapeHtml(mediaUrl(`questions/${scene.id}-${i+1}.webp`));
-      return `<a href="${src}" target="_blank" rel="noopener" aria-label="放大原题第 ${i+1} 页"><img class="question-image" src="${src}" alt="原题第 ${i+1} 页，共 ${scene.pages} 页" ${i ? 'loading="lazy"' : ""}></a>`;
-    }).join("")}</div>`;
-    return `<div class="cues">${scene.clues.map((clue, i) => `<div class="cue" lang="${clue ? "en" : "zh-CN"}"><b>${firstQuestion(scene)+i}</b> ${escapeHtml(clue || "原资料未列")}</div>`).join("")}</div>`;
+    const words = questionText(scene);
+    const title = scene.pages ? "听力原题" : "场景填空";
+    const textButton = scene.pages && words
+      ? '<button class="button secondary small" data-action="question-text" aria-expanded="false" aria-controls="question-text">文字版</button>' : "";
+    const copyButton = words ? '<button class="button secondary small" data-action="copy-question">复制题目</button>' : "";
+    const content = scene.pages
+      ? `<div id="question-images" class="question-images">${Array.from({length:scene.pages}, (_, i) => {
+          const src = escapeHtml(mediaUrl(`questions/${scene.id}-${i+1}.webp`));
+          return `<a href="${src}" target="_blank" rel="noopener" aria-label="放大原题第 ${i+1} 页"><img class="question-image" src="${src}" alt="原题第 ${i+1} 页，共 ${scene.pages} 页" ${i ? 'loading="lazy"' : ""}></a>`;
+        }).join("")}</div><pre id="question-text" class="question-text" lang="en" tabindex="0" hidden>${escapeHtml(words)}</pre>`
+      : `<div class="cues" id="question-text">${scene.clues.map((clue, i) => `<div class="cue" lang="${clue ? "en" : "zh-CN"}"><b>${firstQuestion(scene)+i}</b> ${escapeHtml(clue || "原资料未列")}</div>`).join("")}</div>`;
+    return `<section class="panel"><div class="panel-head"><h2>${title}</h2><div class="answer-tools">${textButton}${copyButton}</div>
+      <span role="status" id="copy-feedback"></span></div>${content}</section>`;
   }
 
   function exam() {
@@ -173,21 +188,35 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       </div>
       ${renderAudio(scene)}
       <div class="exam-grid">
-        <section class="panel"><div class="panel-head"><h2>${scene.pages ? "听力原题" : "场景填空"}</h2><span>${scene.pages ? "点开图片可放大" : "根据原资料中的答案线索练习"}</span></div>${promptPanel(scene)}</section>
+        ${promptPanel(scene)}
         <section class="panel"><div class="panel-head"><h2>答题区</h2><div class="answer-tools"><span id="filled"></span>
           ${session.timed ? "" : '<button class="button secondary small" data-action="key" aria-expanded="false">查看参考答案</button>'}</div></div>
         <div class="sheet-body">${inputs}</div></section>
       </div>
       <div class="exam-nav">
         <div class="numbers" aria-label="导航题号">${scene.answers.map((a,i) => `<button class="number" data-action="number" data-item="${i}" ${a===null?"disabled":""}>${first+i}</button>`).join("")}</div>
-        <div class="dialog-actions">${index+1<session.scenes.length ? '<button class="button secondary" data-action="next-part">下一 Part</button>' : ""}
+        <div class="dialog-actions"><button class="button secondary" data-action="next-answer">下一题</button>
+         ${index+1<session.scenes.length ? '<button class="button secondary" data-action="next-part">下一 Part</button>' : ""}
          <button class="button primary" data-action="submit">交卷</button></div>
       </div>
     </section>`;
-    main.querySelectorAll("[data-answer]").forEach((el) => el.addEventListener("input", () => {
-      session.answers[index][Number(el.dataset.answer)] = el.value;
-      showProgress();
-    }));
+    main.querySelectorAll("[data-answer]").forEach((el) => {
+      const item = Number(el.dataset.answer);
+      el.addEventListener("focus", () => {
+        session.activeQuestions[index] = item;
+        showProgress();
+      });
+      el.addEventListener("input", () => {
+        session.answers[index][item] = el.value;
+        showProgress();
+      });
+      el.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.isComposing) {
+          event.preventDefault();
+          nextQuestion();
+        }
+      });
+    });
     showProgress();
     updateTimer();
 
@@ -220,7 +249,66 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     main.querySelectorAll(".number").forEach((el, i) => {
       el.classList.toggle("filled", Boolean(values[i]?.trim()));
       el.classList.toggle("marked", flags[i]);
+      if (i === session.activeQuestions[index]) el.setAttribute("aria-current", "step");
+      else el.removeAttribute("aria-current");
     });
+    main.querySelector('[data-action="next-answer"]').disabled = nextAnswerIndex() === -1 && index === session.scenes.length - 1;
+  }
+
+  function nextAnswerIndex() {
+    const index = session.index;
+    const active = session.activeQuestions[index];
+    return session.scenes[index].answers.findIndex((answer, i) => i > active && answer !== null);
+  }
+
+  function focusAnswer(index) {
+    main.querySelector(`#a-${index}`)?.focus();
+  }
+
+  function switchPart(next, focusFirst = false) {
+    if (next === session.index || !session.scenes[next]) return;
+    const audio = main.querySelector("#audio");
+    if (session.timed && audio && !audio.paused && !audio.ended) {
+      main.querySelector("#audio-status").textContent = "请听完本段音频再切换。";
+      return;
+    }
+    session.index = next;
+    if (focusFirst) session.activeQuestions[next] = session.scenes[next].answers.findIndex((answer) => answer !== null);
+    exam();
+    window.scrollTo(0, 0);
+    if (focusFirst) focusAnswer(session.activeQuestions[next]);
+  }
+
+  function nextQuestion() {
+    const next = nextAnswerIndex();
+    if (next >= 0) focusAnswer(next);
+    else switchPart(session.index + 1, true);
+  }
+
+  function showQuestionText(show) {
+    main.querySelector("#question-images").hidden = show;
+    main.querySelector("#question-text").hidden = !show;
+    const toggle = main.querySelector('[data-action="question-text"]');
+    toggle.setAttribute("aria-expanded", String(show));
+    toggle.textContent = show ? "原题图片" : "文字版";
+  }
+
+  async function copyQuestion() {
+    const scene = session.scenes[session.index];
+    const feedback = main.querySelector("#copy-feedback");
+    try {
+      await navigator.clipboard.writeText(questionText(scene));
+      feedback.textContent = "题目已复制";
+    } catch {
+      if (!feedback.isConnected) return;
+      if (scene.pages) showQuestionText(true);
+      const range = document.createRange();
+      range.selectNodeContents(main.querySelector("#question-text"));
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      feedback.textContent = "文字已选中，可用复制快捷键。";
+    }
   }
 
   function updateTimer() {
@@ -259,8 +347,10 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
       <td>${escapeHtml(row.answer ?? "原资料未列")}</td><td class="${row.correct === null ? "" : row.correct ? "ok" : "bad"}">${row.correct === null ? "不计分" : row.correct ? "正确" : row.value.trim() ? "答错" : "未答"}</td></tr>`).join("")}
       </tbody></table></details>`;
     });
+    const nextScene = session.timed ? null : bank[bank.indexOf(session.scenes[0]) + 1];
     main.innerHTML = `<div class="exam-top"><div><a class="back" href="#practice">← 练习题库</a><h1>练习结果</h1></div>
-      <button class="button secondary" data-action="retry">重做本组</button></div>
+      <div class="dialog-actions"><button class="button secondary" data-action="retry">重做本组</button>
+        ${nextScene ? `<button class="button primary" data-action="start" data-id="${nextScene.id}">下一场景</button>` : ""}</div></div>
       <div class="result-summary"><p>答对题数</p><h2>${right} / ${total}</h2><p>正确率 ${total ? Math.round(right / total * 100) : 0}%</p></div>${sections.join("")}`;
   }
 
@@ -310,16 +400,13 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
     } else if (action === "mock") {
       newSession([1,2,3,4].map(randomScene), true);
     } else if (action === "part" || action === "next-part") {
-      const next = action === "part" ? item : session.index + 1;
-      if (next === session.index) return;
-      const audio = document.querySelector("#audio");
-      if (session.timed && audio && !audio.paused && !audio.ended) {
-        document.querySelector("#audio-status").textContent = "请听完本段音频再切换。";
-        return;
-      }
-      session.index = next;
-      exam();
-      window.scrollTo(0, 0);
+      switchPart(action === "part" ? item : session.index + 1);
+    } else if (action === "next-answer") {
+      nextQuestion();
+    } else if (action === "question-text") {
+      showQuestionText(el.getAttribute("aria-expanded") !== "true");
+    } else if (action === "copy-question") {
+      await copyQuestion();
     } else if (action === "play") {
       const index = session.index;
       const audio = document.querySelector("#audio");
@@ -333,7 +420,7 @@ function startListening(bank, descriptions = {}, mediaUrl = (relative) => relati
         document.querySelector("#audio-status").textContent = "播放失败，请重试。";
       }
     } else if (action === "number") {
-      document.querySelector("#a-" + item).focus();
+      focusAnswer(item);
     } else if (action === "flag") {
       const flags = session.flags[session.index];
       flags[item] = !flags[item];

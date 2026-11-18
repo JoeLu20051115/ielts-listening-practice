@@ -182,3 +182,7 @@ dialog p { margin: 12px 0 17px; color: var(--muted); line-height: 1.55; }
 .answer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .inline-key { grid-column: 2 / -1; color: var(--deep); background: var(--soft); padding: 7px 9px; border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
 .inline-key[hidden] { display: none; }
+.question-text { margin: 0; padding: 16px 18px; max-height: 66vh; overflow: auto; color: var(--ink); background: var(--white); white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.65 "Cascadia Mono", Consolas, monospace; user-select: text; }
+#copy-feedback { color: var(--green); font-size: 12px; }
+#copy-feedback:not(:empty) { flex-basis: 100%; }
+.number[aria-current="step"] { outline: 2px solid var(--green); outline-offset: 1px; }
